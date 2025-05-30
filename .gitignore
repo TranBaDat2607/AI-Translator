@@ -1,0 +1,46 @@
+# Thư mục và file môi trường
+.env
+.env.*
+venv/
+env/
+ENV/
+__pypackages__/
+
+# Byte-compiled Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build / Dist / Packaging
+build/
+dist/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# PyInstaller
+*.spec
+
+# Test / Coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# IDEs và editor
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Logs và database nháp
+*.log
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Other
+*.pkl
+*.cache
