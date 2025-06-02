@@ -4,12 +4,12 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget,
     QVBoxLayout, QHBoxLayout, QLabel,
     QComboBox, QPushButton, QSplitter,
-    QFileDialog
+    QFileDialog, QMessageBox, QLineEdit
 )
 from PySide6.QtCore import Qt
 from PySide6.QtPdf import QPdfDocument
 from PySide6.QtPdfWidgets import QPdfView
-from pdf2zh.core import convert_pdf
+from pdf2zh.high_level import translate_pdf_streams
 
 
 class PdfTranslatorUI(QMainWindow):
@@ -26,6 +26,19 @@ class PdfTranslatorUI(QMainWindow):
         # --- Top bar: language selector, Open, Zoom In/Out ---
         top_bar = QHBoxLayout()
         vbox.addLayout(top_bar)
+
+        top_bar.addWidget(QLabel("Service:"))
+        self.service_combo = QComboBox()
+        self.service_combo.addItems(["OpenAI", "Gemini"])
+        top_bar.addWidget(self.service_combo)
+
+        top_bar.addWidget(QLabel("API Key:"))   
+        self.api_key_edit = QLineEdit()
+        self.api_key_edit.setEchoMode(QLineEdit.Password)
+        self.api_key_edit.setPlaceholderText("Enter API Key")
+        top_bar.addWidget(self.api_key_edit)
+        # clear & update placeholder on service change
+        self.service_combo.currentTextChanged.connect(self.on_service_changed)
 
         top_bar.addWidget(QLabel("Target language:"))
         self.lang_combo = QComboBox()
@@ -144,6 +157,13 @@ class PdfTranslatorUI(QMainWindow):
         total = self.doc.pageCount()
         self.right_page_label.setText(f"{page + 1}/{total}")
 
+    def on_service_changed(self, service: str) -> None:
+        """
+        Clear API key field and update its placeholder when user switches service
+        """
+        self.api_key_edit.clear()
+        self.api_key_edit.setPlaceholderText(f"Enter {service} API key")
+
     def on_translate(self) -> None:
         """
         Handle Translate button click: perform translation and load result.
@@ -151,26 +171,35 @@ class PdfTranslatorUI(QMainWindow):
         if not hasattr(self, "current_pdf_path"):
             QMessageBox.warning(self, "No PDF Loaded", "Please open a PDF before translating.")
             return
+        
+        service = self.service_combo.currentText()
         lang = self.lang_combo.currentText()
+        api_key = self.api_key_edit.text().strip()
+        if not api_key:
+            QMessageBox.warning(self, "No API Key", "Please enter API key.")
+            return
         input_pdf = self.current_pdf_path
         base, _ = os.path.splitext(input_pdf)
-        output_pdf = base + f"_{lang}.pdf"
-        # perform translation
-        convert_pdf(input_pdf, output_pdf, target_lang=lang)
-        # load translated PDF into right view
+        output_pdf = f"{base}_{service}_{lang}.pdf"
+
+        # Run full translation pipeline (pdfinterp + converter + pikepdf)
+        cache_db = os.path.join(os.path.expanduser("~"), ".pdf2zh_cache.db")
+
+        translate_pdf_streams(
+            input_pdf,
+            output_pdf,
+            service=service,
+            api_key=api_key,
+            src_lang="auto",
+            tgt_lang=lang,
+            cache_db=cache_db
+        )
+
+        # Load translated PDF file directly
         self.translated_doc.load(output_pdf)
-        # reset zoom and update label
-        self.zoom_factor = 1.0
-        self.right_view.setZoomFactor(self.zoom_factor)
-        total = self.translated_doc.pageCount()
-        if total > 0:
-            self.right_page_label.setText(f"1/{total}")
-        else:
-            self.right_page_label.setText("0/0")
 
 
 if __name__ == "__main__":
-    # Đảm bảo bạn đã pip install PySide6
     app = QApplication(sys.argv)
     win = PdfTranslatorUI()
     win.show()

@@ -1,17 +1,10 @@
-# ... existing imports ...
-from dotenv import load_dotenv
-import openai
-import fitz               # PyMuPDF
-import pdfplumber        # keep for optional fallback text extraction if needed
+import fitz # PyMuPDF
 import os
+import pdfplumber # keep for optional fallback text extraction if needed
+from pdf2zh.translator.openai_translator import OpenAITranslator
+from pdf2zh.translator.gemini_translator import GeminiTranslator
 
-# load API key
-load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
-if not openai.api_key:
-    raise RuntimeError("OpenAI API key not found. Please set OPENAI_API_KEY in .env")
 
-# map UI language names to prompt language names
 LANG_PROMPT = {
     "Chinese": "Simplified Chinese",
     "English": "English",
@@ -42,19 +35,31 @@ def translate_text(text: str, target_lang: str) -> str:
 
 def convert_pdf(
     input_pdf: str,
-    output_pdf: str,
-    target_lang: str
-) -> None:
+    output_pdf: str = None,
+    service: str = "OpenAI",
+    target_lang: str = "English",
+    api_key: str = None,
+    return_stream: bool = False
+) -> bytes | None:
+
+
     """
-    Conversion process:
-    1) Open the PDF and iterate through each page.
-    2) Separate text and image blocks.
-    3) Translate all text blocks and split back into individual blocks.
-    4) Create a new PDF: insert images at original positions, then insert translated text into each block.
+    1) parse, 2) translate, 3) rebuild PDF.
     """
-    print(f"[1/3] Opening {input_pdf}")
+    print(f"[1/4] Opening {input_pdf}")
     doc = fitz.open(input_pdf)
     out = fitz.open()  # new empty PDF
+
+    # choose translator
+    mapper = {
+        "OpenAI": OpenAITranslator,
+        "Gemini": GeminiTranslator
+    }
+    if service not in mapper:
+        raise ValueError(f"Unsupported service: {service}")
+    if not api_key:
+        raise ValueError("API key must be provided for translation")
+    translator = mapper[service](api_key)
 
     delimiter = "\n====BLOCK====\n"
     total = len(doc)
@@ -73,9 +78,10 @@ def convert_pdf(
             block_texts.append("\n".join(lines))
 
         joined = delimiter.join(block_texts)
-        print(f"[2/3] Translating page {i+1}/{total} …")
-        translated = translate_text(joined, target_lang)
-        translated_blocks = translated.split(delimiter)
+
+        print(f"[2/4] Translating page {i+1}/{total} via {service} …")
+        res = translator.translate([joined], src="auto", tgt=target_lang)
+        translated_blocks = res[0].split(delimiter)
 
         # 2) create a new page with the same dimensions
         r = page.rect
@@ -102,7 +108,13 @@ def convert_pdf(
                 fontname="helv",
                 align=0
             )
+    # 5) output
+    if return_stream:
+        print("✅ Done, returning PDF bytes.")
+        return out.write()
+    if output_pdf:
+        print(f"[4/4] Saving to {output_pdf}")
+        out.save(output_pdf)
+        print("✅ Done.")
+    return None
 
-    print(f"[3/3] Saving translated PDF to {output_pdf}")
-    out.save(output_pdf)
-    print("✅ Done.")
