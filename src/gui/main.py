@@ -23,6 +23,15 @@ class PdfTranslatorUI(QMainWindow):
         self.setCentralWidget(central)
         vbox = QVBoxLayout(central)
 
+        # setup UI components
+        self._setup_top_bar(vbox)
+        self._setup_pdf_views(vbox)
+        self._connect_signals()
+
+        # initialize zoom factor
+        self.zoom_factor = 1.0
+
+    def _setup_top_bar(self, vbox):
         # --- Top bar: language selector, Open, Zoom In/Out ---
         top_bar = QHBoxLayout()
         vbox.addLayout(top_bar)
@@ -32,49 +41,39 @@ class PdfTranslatorUI(QMainWindow):
         self.service_combo.addItems(["OpenAI", "Gemini"])
         top_bar.addWidget(self.service_combo)
 
-        top_bar.addWidget(QLabel("API Key:"))   
+        top_bar.addWidget(QLabel("API Key:"))
         self.api_key_edit = QLineEdit()
         self.api_key_edit.setEchoMode(QLineEdit.Password)
         self.api_key_edit.setPlaceholderText("Enter API Key")
         top_bar.addWidget(self.api_key_edit)
-        # clear & update placeholder on service change
-        self.service_combo.currentTextChanged.connect(self.on_service_changed)
+
 
         top_bar.addWidget(QLabel("Target language:"))
         self.lang_combo = QComboBox()
-        # Bạn có thể bổ sung danh sách ngôn ngữ tùy ý
         self.lang_combo.addItems(["Chinese", "English", "Japanese", "Vietnamese"])
         top_bar.addWidget(self.lang_combo)
 
         top_bar.addStretch()
 
         self.open_btn = QPushButton("Open PDF")
-        self.open_btn.clicked.connect(self.open_pdf)
         top_bar.addWidget(self.open_btn)
 
         self.zoom_in_btn = QPushButton("Zoom In")
-        self.zoom_in_btn.clicked.connect(self.zoom_in)
         top_bar.addWidget(self.zoom_in_btn)
 
         self.zoom_out_btn = QPushButton("Zoom Out")
-        self.zoom_out_btn.clicked.connect(self.zoom_out)
         top_bar.addWidget(self.zoom_out_btn)
 
-        # Translate button
         self.translate_btn = QPushButton("Translate")
-        self.translate_btn.clicked.connect(self.on_translate)
         top_bar.addWidget(self.translate_btn)
 
-        # --- Splitter: left = original PDF, right = translated PDF (hiện là gốc) ---
+    def _setup_pdf_views(self, vbox):
         splitter = QSplitter(Qt.Horizontal)
         vbox.addWidget(splitter)
 
-        # 1 QPdfDocument chia sẻ cho cả 2 view
         self.doc = QPdfDocument(self)
-        # translated PDF document
         self.translated_doc = QPdfDocument(self)
 
-        # left side: label + PDF
         container_left = QWidget()
         layout_left = QVBoxLayout(container_left)
         layout_left.setContentsMargins(0, 0, 0, 0)
@@ -89,7 +88,6 @@ class PdfTranslatorUI(QMainWindow):
         layout_left.addWidget(self.left_view)
         splitter.addWidget(container_left)
 
-        # right side: label + PDF
         container_right = QWidget()
         layout_right = QVBoxLayout(container_right)
         layout_right.setContentsMargins(0, 0, 0, 0)
@@ -104,15 +102,20 @@ class PdfTranslatorUI(QMainWindow):
         layout_right.addWidget(self.right_view)
         splitter.addWidget(container_right)
 
-        # update label while scroll 
+    def _connect_signals(self):
+        # update placeholder when service changes
+        self.service_combo.currentTextChanged.connect(self.on_service_changed)
+        # button signals
+        self.open_btn.clicked.connect(self.open_pdf)
+        self.zoom_in_btn.clicked.connect(self.zoom_in)
+        self.zoom_out_btn.clicked.connect(self.zoom_out)
+        self.translate_btn.clicked.connect(self.on_translate)
+        # page navigation signals
         nav_left = self.left_view.pageNavigator()
         nav_left.currentPageChanged.connect(self.on_left_page_changed)
         nav_right = self.right_view.pageNavigator()
         nav_right.currentPageChanged.connect(self.on_right_page_changed)
 
-
-        # khởi tạo zoom factor
-        self.zoom_factor = 1.0
 
     def open_pdf(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

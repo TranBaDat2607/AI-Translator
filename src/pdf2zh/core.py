@@ -1,37 +1,10 @@
-import fitz # PyMuPDF
+import fitz 
 import os
-import pdfplumber # keep for optional fallback text extraction if needed
+import pdfplumber 
+from openai import OpenAI
+
 from pdf2zh.translator.openai_translator import OpenAITranslator
 from pdf2zh.translator.gemini_translator import GeminiTranslator
-
-
-LANG_PROMPT = {
-    "Chinese": "Simplified Chinese",
-    "English": "English",
-    "Japanese": "Japanese",
-    # add more mappings as needed
-}
-
-def translate_text(text: str, target_lang: str) -> str:
-    """
-    Call OpenAI ChatCompletion to translate text, preserving any LaTeX formulas.
-    """
-    # look up the human-readable language for the prompt
-    lang_name = LANG_PROMPT.get(target_lang, target_lang)
-    prompt = (
-        f"Please translate the following text into {lang_name}. "
-        "Do NOT modify any non-text content (images, formulas), only translate the text:\n\n"
-        f"{text}"
-    )
-    resp = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a helpful translation assistant."},
-            {"role": "user",   "content": prompt}
-        ],
-        temperature=0.0,
-    )
-    return resp.choices[0].message.content.strip()
 
 def convert_pdf(
     input_pdf: str,
