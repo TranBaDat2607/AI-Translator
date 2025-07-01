@@ -5,7 +5,9 @@ Set up in anaconda:
 - conda activate ai-translator
 - pip install -e . for dev or pip install .  for production
 
+DONE: 
+- Đã dịch được các block
 TO DO:
-- fix nốt bug cho có thể demo dịch
+- fix hiện hên GUI đúng với format của văn bản gốc
 - sửa dịch bằng gemini để chỉ cần cho api key
   

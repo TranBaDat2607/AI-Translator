@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtPdf import QPdfDocument
 from PySide6.QtPdfWidgets import QPdfView
-from pdf2zh.high_level import translate_pdf_streams
+from pdf2zh.core import convert_pdf
 
 
 class PdfTranslatorUI(QMainWindow):
@@ -185,17 +185,11 @@ class PdfTranslatorUI(QMainWindow):
         base, _ = os.path.splitext(input_pdf)
         output_pdf = f"{base}_{service}_{lang}.pdf"
 
-        # Run full translation pipeline (pdfinterp + converter + pikepdf)
-        cache_db = os.path.join(os.path.expanduser("~"), ".pdf2zh_cache.db")
-
-        translate_pdf_streams(
-            input_pdf,
-            output_pdf,
-            service=service,
+        convert_pdf(
+            input_pdf=input_pdf,
+            output_pdf=output_pdf,
+            target_lang=lang,
             api_key=api_key,
-            src_lang="auto",
-            tgt_lang=lang,
-            cache_db=cache_db
         )
 
         # Load translated PDF file directly
