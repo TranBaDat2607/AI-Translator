@@ -7,6 +7,7 @@ Set up in anaconda:
 
 DONE: 
 - Đã dịch được các block
+
 TO DO:
 - fix hiện hên GUI đúng với format của văn bản gốc
 - sửa dịch bằng gemini để chỉ cần cho api key
