@@ -88,6 +88,16 @@ def convert_pdf(input_pdf: str, output_pdf: str, target_lang: str, api_key: str)
     # 5) output
     print(f"[3/3] Saving translated PDF to {output_pdf}")
     out.save(output_pdf)
+
+    orig = fitz.open(input_pdf)
+    trans = fitz.open(output_pdf)
+    dual = fitz.open()
+    for i in range(orig.page_count):
+        dual.insert_pdf(orig, from_page=i, to_page=i)
+        dual.insert_pdf(trans, from_page=i, to_page=i)
+    
+    base, ext = os.path.splitext(output_pdf)
+    dual.save(f"{base}_dual{ext}")
     print("Done.")
 
 

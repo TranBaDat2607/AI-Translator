@@ -1,97 +1,81 @@
-import pikepdf
-import re
-import os
+import io
+import numpy as np
+import fitz
+from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
+from pdfminer.pdfparser import PDFParser
+from pdfminer.pdfdocument import PDFDocument
+from pdfminer.pdfpage import PDFPage
 from pdf2zh.cache import CachedTranslator
 from pdf2zh.translator.openai_translator import OpenAITranslator
 from pdf2zh.translator.gemini_translator import GeminiTranslator
+from pdf2zh.converter import TranslateConverter
+import pikepdf
+import logging
+logging.basicConfig(level=logging.INFO)
 
-# Regex to find TJ and Tj operators
-_TJ_STRING = re.compile(rb'\((.*?)\)\s*TJ', re.DOTALL)
-_Tj_STRING = re.compile(rb'\((.*?)\)\s*Tj')
-
-def _escape_pdf(s: str) -> bytes:
-    # Escape backslash and parentheses in PDF literal
-    return s.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)').encode('latin1')
-
-def translate_pdf_streams(
+def translate_full_layout(
     input_pdf: str,
     output_pdf: str,
     service: str,
     api_key: str,
     src_lang: str,
     tgt_lang: str,
-    cache_db: str
+    cache_db: str,
+    onnx_model,            # instance của OnnxModel
+    thread: int = 1,
 ) -> None:
     """
-    Full-pipeline: keep all content stream (fonts, locs, operators),
-    only replace literal text in (… ) Tj / (…) TJ.
+    Pipeline A→B→C:
+      A) build layout per page với onnx_model
+      B) parse bằng PDFMiner, group paragraph+formula
+      C) dịch và sinh PDF-operators rồi patch via pikepdf
     """
-    # 1) initialize translator + cache
-    mapper = {
-        "OpenAI": OpenAITranslator,
-        "Gemini": GeminiTranslator
-    }
+    # 1) Translator + cache
+    mapper = {"OpenAI": OpenAITranslator, "Gemini": GeminiTranslator}
     if service not in mapper:
         raise ValueError(f"Unsupported service {service}")
     inner = mapper[service](api_key)
     translator = CachedTranslator(inner, cache_db)
 
-    # 2) open PDF
+    # 2) Build layout_map bằng PyMuPDF + onnx_model
+    doc_fitz = fitz.open(input_pdf)
+    layout_map = {}
+    for pno in range(len(doc_fitz)):
+        pix = doc_fitz[pno].get_pixmap()
+        img = np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width, 3)[..., ::-1]
+        layout_map[pno] = onnx_model.predict(img, imgsz=int(pix.height/32)*32)[0]
+
+    # 3) Mở PDF gốc với pikepdf
     pdf = pikepdf.Pdf.open(input_pdf, allow_overwriting_input=True)
 
-    # 3) for each page, replace content-stream
-    for page in pdf.pages:
-        # Normalize and flatten content streams (handle nested arrays)
-        contents = page.Contents
-        def _iter_streams(obj):
-            if isinstance(obj, pikepdf.Stream):
-                yield obj
-            else:
-                try: 
-                    iterator = iter(obj)
-                except TypeError:
-                    return 
-                for elem in iterator:
-                    yield from _iter_streams(elem)
+    # 4) Khởi PDFMiner
+    with open(input_pdf, "rb") as f:
+        parser = PDFParser(f)
+        doc = PDFDocument(parser)
+    rsrcmgr = PDFResourceManager()
 
-        stream_objs = list(_iter_streams(contents))
-        # Read and concatenate all stream bytes
-        raw = b"".join(s.read_bytes() for s in stream_objs)
+    # 5) Xử lý từng trang
+    for pno, page in enumerate(pdf.pages):
+        # A) Khởi converter
+        conv = TranslateConverter(
+            rsrcmgr=rsrcmgr,
+            translator=translator,
+            src_lang=src_lang,
+            tgt_lang=tgt_lang,
+            thread=thread,
+            layout=layout_map,
+        )
+        interpreter = PDFPageInterpreter(rsrcmgr, conv)
+        # B) parse page từ PDFMiner
+        for pm in PDFPage.create_pages(doc):
+            if pm.pageid == pno:
+                interpreter.process_page(pm)
+                # C) lấy BT…ET string
+                ops = conv.end_page(pm)
+                # patch lại content-stream
+                new_stream = pdf.make_stream(ops.encode("utf-8"))
+                page.Contents = new_stream
+                break
 
-        # 3.1 collect all literal text to translate
-        originals = []
-        spans = []
-        for pat in (_Tj_STRING, _TJ_STRING):
-            for m in pat.finditer(raw):
-                data = m.group(1)
-                originals.append(data)
-                spans.append((m.start(1), m.end(1), pat is _TJ_STRING))
-
-        if not originals:
-            continue
-
-        # decode by Latin1 to keep byte-to-char mapping
-        str_texts = [o.decode('latin1') for o in originals]
-
-        # 3.2 translate
-        trans_texts = translator.translate(str_texts, src_lang, tgt_lang)
-
-        # 3.3 rebuild raw, replace each literal one by one
-        new_raw = bytearray(raw)
-        delta = 0
-        for (start, end, is_array), orig_bytes, tr in zip(spans, originals, trans_texts):
-            # escape and encode to bytes
-            esc = _escape_pdf(tr)
-            # replace in bytearray
-            s = start + delta
-            e = end   + delta
-            # write esc to position s:e
-            new_raw[s:e] = esc
-            delta += len(esc) - (end - start)
-
-        # 3.4 assign back
-        new_stream = pdf.make_stream(bytes(new_raw))
-        page.Contents = new_stream
-
-    # 4) save
+    # 6) Lưu kết quả
     pdf.save(output_pdf)
