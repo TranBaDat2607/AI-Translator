@@ -6,9 +6,9 @@ Set up in anaconda:
 - pip install -e . for dev or pip install .  for production
 
 DONE: 
-- Đã dịch được các block
+- Khởi động lại logic của việc dịch xử lý và visualize
 
 TO DO:
-- fix hiện hên GUI đúng với format của văn bản gốc
+- cần fix lại cách lấy nội dung của pdf
 - sửa dịch bằng gemini để chỉ cần cho api key
   

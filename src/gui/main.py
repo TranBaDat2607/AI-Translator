@@ -43,7 +43,7 @@ class PdfTranslatorUI(QMainWindow):
 
         top_bar.addWidget(QLabel("API Key:"))
         self.api_key_edit = QLineEdit()
-        self.api_key_edit.setEchoMode(QLineEdit.Password)
+        self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_key_edit.setPlaceholderText("Enter API Key")
         top_bar.addWidget(self.api_key_edit)
 
@@ -68,7 +68,7 @@ class PdfTranslatorUI(QMainWindow):
         top_bar.addWidget(self.translate_btn)
 
     def _setup_pdf_views(self, vbox):
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         vbox.addWidget(splitter)
 
         self.doc = QPdfDocument(self)
@@ -78,7 +78,7 @@ class PdfTranslatorUI(QMainWindow):
         layout_left = QVBoxLayout(container_left)
         layout_left.setContentsMargins(0, 0, 0, 0)
         self.left_page_label = QLabel("0/0")
-        self.left_page_label.setAlignment(Qt.AlignCenter)
+        self.left_page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout_left.addWidget(self.left_page_label)
 
         self.left_view = QPdfView()
@@ -92,7 +92,7 @@ class PdfTranslatorUI(QMainWindow):
         layout_right = QVBoxLayout(container_right)
         layout_right.setContentsMargins(0, 0, 0, 0)
         self.right_page_label = QLabel("0/0")
-        self.right_page_label.setAlignment(Qt.AlignCenter)
+        self.right_page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout_right.addWidget(self.right_page_label)
 
         self.right_view = QPdfView()
