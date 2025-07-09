@@ -6,7 +6,12 @@ Set up in anaconda:
 - pip install -e . for dev or pip install .  for production
 
 DONE: 
-- Đã dịch được các block
+- lấy được text
+
+DOING:
+- làm sao để merge các đoạn để giữ lại context
+- test chiếu lên pdf mới 
+
 TO DO:
 - fix hiện hên GUI đúng với format của văn bản gốc
 - sửa dịch bằng gemini để chỉ cần cho api key
