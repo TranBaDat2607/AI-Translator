@@ -1,59 +1,41 @@
 import os
 import fitz  # PyMuPDF
+import sys 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "src")))
+
 from pdf2zh.core import PageCoordinates, detect_paragraphs 
 from pdf2zh.cache import CachedTranslator
 from pdf2zh.translator.openai_translator import OpenAITranslator
 from dataclasses import asdict
 from pprint import pprint
-testing_file_dir = "C:/Users/Admin/Desktop/AI_traslator/Taigman_DeepFace_Closing_the_2014_CVPR_paper.pdf"
+from pdf2zh.high_level import translate_pdf_streams
+from pdf2zh.core import convert_pdf
+# testing_file_dir = "C:/Users/Admin/Desktop/AI_traslator/Taigman_DeepFace_Closing_the_2014_CVPR_paper.pdf"
+testing_file_dir = "C:/Users/Admin/Desktop/proj/Taigman_DeepFace_Closing_the_2014_CVPR_paper.pdf"
 
 def main():
     api_key = os.getenv("OPENAI_API_KEY")
+    src = fitz.open(testing_file_dir)
+    # chỉ lấy page đầu tiên
+    doc = fitz.open()
+    doc.insert_pdf(src, from_page=0, to_page=0)
+    temp_pdf = "temp_first_page.pdf"
+    doc.save(temp_pdf)
 
-    page_index = 0  
+    output_pdf = "page1_translated.pdf"
+    convert_pdf(
+        input_pdf=temp_pdf,
+        output_pdf=output_pdf,
+        target_lang="Vietnamese",
+        api_key=api_key
+    )
+    print(f"Saved translated PDF to {output_pdf}")
 
-    base, _ = os.path.splitext(testing_file_dir)
-    single_pdf = f"{base}_page{page_index+1}.pdf"
-    src_doc = fitz.open(testing_file_dir)
-    temp_doc = fitz.open()
-    temp_doc.insert_pdf(src_doc, from_page=page_index, to_page=page_index)
-    temp_doc.save(single_pdf)
+    try:
+        os.remove(temp_pdf)
+    except OSError:
+        pass
 
-    read_doc = fitz.open(single_pdf)
-    page0 = read_doc[0]
-    print("\n===== Original PDF Page Text =====")
-    print(page0.get_text("text"))
-    print("\n===== Original PDF Page Blocks (coords & text) =====")
-    pc = PageCoordinates.from_page(page_index, page0)
-    print("\n===== PageCoordinates dataclass as dict =====")
-    pprint(asdict(pc))
-    print("\n===== BlockInfo dataclass list =====")
-    pprint([asdict(blk) for blk in pc.blocks])
-    for blk in pc.blocks:
-        print(f"Block {blk.block_no}: type={blk.block_type}, bbox={blk.bbox}")
-        if blk.block_type == 0:
-            print(blk.text)
-    print("===== End of page read log =====\n")
-
-    pc = PageCoordinates.from_page(page_index, page0)
-    paras = detect_paragraphs(pc.blocks, x_tol=50, y_tol=5)
-    for i, p in enumerate(paras):
-        print(f"Paragraph {i}:")
-        for blk in p:
-            print(" ", blk.text)
-        print()
-
-    inner = OpenAITranslator(api_key)
-    translator = CachedTranslator(inner, "cache_test.db")
-    # Prepare paragraph texts
-    texts = [" ".join(blk.text for blk in p) for p in paras]
-    # Perform translation (source English to target Chinese)
-    translations = translator.translate(texts, src="en", tgt="vi")
-    print("\n===== Translated Paragraphs =====")
-    for i, tr in enumerate(translations):
-        print(f"Paragraph {i} translation:")
-        print(tr)
-        print()
 
 
 if __name__ == "__main__":

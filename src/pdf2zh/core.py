@@ -2,6 +2,8 @@ import os
 from dotenv import load_dotenv
 import openai
 import fitz               # PyMuPDF
+import glob
+import re
 import pdfplumber         # optional fallback text extraction
 from dataclasses import dataclass, field
 from typing import List, Optional, Any, Dict
@@ -20,6 +22,7 @@ class BlockInfo:
     block_type: int
     bbox: fitz.Rect
     text: str
+    font_size: float
 
 @dataclass
 class PageCoordinates:
@@ -55,12 +58,20 @@ class PageCoordinates:
                 ]
                 text = "\n".join(lines)
 
+            sizes = [
+                    span.get("size", 0)
+                    for line in blk.get("lines", [])
+                    for span in line.get("spans", [])
+                ]
+            font_size = max(sizes) if sizes else 0.0
             blocks.append(BlockInfo(
                 block_no=idx,
                 block_type=btype,
                 bbox=bbox,
-                text=text
+                text=text,
+                font_size=font_size
             ))
+
 
         return cls(
             page_index=page_index,
@@ -95,6 +106,28 @@ def translate_text(text: str, target_lang: str) -> str:
         temperature=0.0,
     )
     return resp.choices[0].message.content.strip()
+
+def _find_system_vn_font() -> Optional[str]:
+    # 1) Kiểm tra bundle trong src/pdf2zh/fonts
+    base = os.path.dirname(__file__)
+    bundled = os.path.join(base, "fonts", "NotoSans-Regular.ttf")
+    if os.path.exists(bundled):
+        return bundled
+
+    # 2) Fallback sang font hệ thống Windows/Unix
+    fonts_dir = os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts")
+    patterns = [
+        "*arialuni.ttf",
+        "*dejavu*Sans*.ttf",
+        "*times new roman.ttf",
+        "*calibri.ttf"
+    ]
+    for pat in patterns:
+        matches = glob.glob(os.path.join(fonts_dir, pat))
+        if matches:
+            return matches[0]
+    return None
+
 
 def extract_layout_pages(
     doc: fitz.Document,
@@ -196,64 +229,140 @@ def detect_paragraphs(
 
     return paragraphs
 
+def render_translations_on_page(
+    page: fitz.Page,
+    blocks: List[BlockInfo],
+    translations: List[str],
+    fontsize: float = 12,
+    fontname: Optional[str] = None,
+    debug: bool = True
+) -> None:
+    """
+    Vẽ mỗi bản dịch lên page đúng vị trí bbox, tự wrap khi vượt chiều rộng,
+    không dùng hình ảnh mà vẫn là text vector.
+    """
+    system_font = _find_system_vn_font()
+    fontfile = system_font
+    fontname_default = fontname or "Times-Roman"
+
+    if fontfile:
+        try:
+            measure_font = fitz.Font(fontfile=fontfile)
+        except Exception:
+            measure_font = fitz.Font(fontname=fontname_default)
+    else:
+        measure_font = fitz.Font(fontname=fontname_default)
+
+
+    for blk, txt in zip(blocks, translations):
+        s = txt.strip()
+        if not s:
+            continue
+
+        # khi debug==True thì vẽ khung đỏ để check bbox, else bỏ
+        if debug:
+            page.draw_rect(blk.bbox, color=(1,0,0), width=0.5)
+
+        # xác định kích thước chữ
+        block_fs = blk.font_size if blk.font_size and blk.font_size > 0 else fontsize
+
+        # manual wrap: chia s thành words, ghép từng dòng sao cho <= bbox.width
+        rect = blk.bbox
+        try:
+            if fontfile:
+                page.insert_textbox(
+                    rect,
+                    s,
+                    fontfile=fontfile,
+                    fontsize=block_fs,
+                    color=(0, 0, 0),
+                    align=0  # left align
+                )
+            else:
+                page.insert_textbox(
+                    rect,
+                    s,
+                    fontname=fontname_default,
+                    fontsize=block_fs,
+                    color=(0, 0, 0),
+                    align=0
+                )
+        except Exception as e:
+            print(f"[ERROR] insert_textbox failed: {e}")
+
 
 def convert_pdf(
     input_pdf: str,
     output_pdf: str,
     target_lang: str,
-    api_key: str,
-    layout_model: Any
+    api_key: str
 ) -> None:
-
+    """
+    1) Mở input_pdf
+    2) Với mỗi page: 
+         - lấy BlockInfo từ PageCoordinates
+         - re-insert images
+         - dịch từng block.text
+         - gọi render_translations_on_page()
+    3) Lưu output_pdf
+    """
     if not api_key:
         raise ValueError("API key is required")
     openai.api_key = api_key
-    doc = fitz.open(input_pdf)
-    out = fitz.open()  # new PDF
-    layouts: Dict[int, PageCoordinates] = extract_layout_pages(doc, layout_model)
 
-    delimiter = "\n====BLOCK====\n"
-    total = len(doc)
+    import pdfplumber
+    src = fitz.open(input_pdf)
+    pdf_p = pdfplumber.open(input_pdf)
+    out = fitz.open()
+    total = len(src)
+
     for i in range(total):
-        page = doc[i]
-
-        # Extract all blocks with bounding boxes
-        raw = page.get_text("dict")
+        print(f"[PAGE] {i+1}/{total}")
+        page = src[i]
         pc = PageCoordinates.from_page(i, page)
-        text_blocks = [blk for blk in pc.blocks if blk.block_type == 0]
-        block_texts = [blk.text for blk in text_blocks]
 
-        joined = delimiter.join(block_texts)
-        print(f"[2/3] Translating page {i+1}/{total} …")
-        translated = translate_text(joined, target_lang)
-        print(f"[DEBUG] Page {i+1} translated text:\n{translated}")
-        translated_blocks = translated.split(delimiter)
+        p_p = pdf_p.pages[i]
+        h = page.rect.height
+        for blk in pc.blocks:
+            if blk.block_type == 0 and (not blk.text.strip() or "·" in blk.text):
+                x0, y0, x1, y1 = blk.bbox.x0, blk.bbox.y0, blk.bbox.x1, blk.bbox.y1
+                # pdfplumber dùng origin ở bottom-left, nên phải đảo chiều y
+                top_pl = h - y1
+                bottom_pl = h - y0
+                crop = p_p.within_bbox((x0, top_pl, x1, bottom_pl))
+                fb = crop.extract_text()
+                if fb:
+                    blk.text = fb
 
-        # Create a new page with same dimensions
+        # A) tạo page mới
         r = page.rect
         newp = out.new_page(width=r.width, height=r.height)
 
-        # Re-insert images
+        # B) re-insert images
+        raw = page.get_text("dict")
         for blk in pc.blocks:
             if blk.block_type == 1:
                 raw_blk = raw["blocks"][blk.block_no]
                 xref = raw_blk.get("xref", raw_blk.get("image"))
-                if not isinstance(xref, int):
-                    continue
-                imginfo = doc.extract_image(xref)
-                newp.insert_image(blk.bbox, stream=imginfo["image"])
+                if isinstance(xref, int):
+                    img = src.extract_image(xref)["image"]
+                    newp.insert_image(blk.bbox, stream=img)
 
-        # Insert translated text into original positions
-        for blk, txt in zip(text_blocks, translated_blocks):
-            newp.insert_textbox(
-                blk.bbox,
-                txt,
-                fontsize=12,
-                fontname="helv",
-                align=0
-            )
+        # C) dịch từng text-block
+        text_blocks = [b for b in pc.blocks if b.block_type == 0 and b.text.strip()]
+        translations = []
+        for blk in text_blocks:
+            print(f"[TRANSLATE] block_no={blk.block_no}")
+            # Để test, bạn có thể tạm: tr = "TEST"
+            clean = re.sub(r"-(\s*\n\s*)", "", blk.text)
+            tr = translate_text(blk.text, target_lang)
+            
+            print(f"[TRANSLATE] => {tr!r}")
+            translations.append(tr)
 
-    # Save output
-    print(f"[3/3] Saving translated PDF to {output_pdf}")
+        # D) render lên new page
+        render_translations_on_page(newp, text_blocks, translations, debug=True)
+
+    print(f"[SAVE] {output_pdf}")
     out.save(output_pdf)
     print("Done.")

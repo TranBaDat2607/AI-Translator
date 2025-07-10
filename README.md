@@ -10,7 +10,8 @@ DONE:
 
 DOING:
 - làm sao để merge các đoạn để giữ lại context
-- test chiếu lên pdf mới 
+- fix nốt chiếu lên
+- đã lấy được bounding box
 
 TO DO:
 - fix hiện hên GUI đúng với format của văn bản gốc

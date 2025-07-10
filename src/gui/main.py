@@ -6,6 +6,8 @@ from PySide6.QtWidgets import (
     QComboBox, QPushButton, QSplitter,
     QFileDialog, QMessageBox, QLineEdit
 )
+from PySide6.QtGui import QFontDatabase
+import pathlib
 from PySide6.QtCore import Qt
 from PySide6.QtPdf import QPdfDocument
 from PySide6.QtPdfWidgets import QPdfView
@@ -198,6 +200,14 @@ class PdfTranslatorUI(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    # Đăng ký NotoSans-Regular.ttf để Qt PDF viewer dùng đúng glyph tiếng Việt
+    font_path = pathlib.Path(__file__).parent.parent / "src" / "pdf2zh" / "fonts" / "NotoSans-Regular.ttf"
+    fid = QFontDatabase.addApplicationFont(str(font_path))
+    if fid < 0:
+        print("⚠️ Không load được font NotoSans-Regular.ttf")
+    else:
+        print(f"✅ Đã đăng ký NotoSans vào Qt (id={fid})")
+
     win = PdfTranslatorUI()
     win.show()
     sys.exit(app.exec())
