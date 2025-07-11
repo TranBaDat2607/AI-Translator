@@ -11,6 +11,8 @@ DONE:
 DOING:
 - làm sao để merge các đoạn để giữ lại context
 - fix nốt chiếu lên
+    - Đã tìm được lý do tại sao ko chiếu lên
+    - lấy thêm font name và kiểu chữ in đậm/ nghiêng để tìm xem nguyên nhân ko hiện lên được là gì
 - đã lấy được bounding box
 
 TO DO:

@@ -8,7 +8,6 @@ from pdf2zh.cache import CachedTranslator
 from pdf2zh.translator.openai_translator import OpenAITranslator
 from dataclasses import asdict
 from pprint import pprint
-from pdf2zh.high_level import translate_pdf_streams
 from pdf2zh.core import convert_pdf
 # testing_file_dir = "C:/Users/Admin/Desktop/AI_traslator/Taigman_DeepFace_Closing_the_2014_CVPR_paper.pdf"
 testing_file_dir = "C:/Users/Admin/Desktop/proj/Taigman_DeepFace_Closing_the_2014_CVPR_paper.pdf"

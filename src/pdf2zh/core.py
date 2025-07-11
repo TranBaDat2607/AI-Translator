@@ -8,6 +8,7 @@ import pdfplumber         # optional fallback text extraction
 from dataclasses import dataclass, field
 from typing import List, Optional, Any, Dict
 import numpy as np
+import pymupdf
 
 @dataclass
 class BlockInfo:
@@ -23,6 +24,8 @@ class BlockInfo:
     bbox: fitz.Rect
     text: str
     font_size: float
+    font_name: Optional[str] = None 
+    font_flags: int = 0 
 
 @dataclass
 class PageCoordinates:
@@ -107,26 +110,21 @@ def translate_text(text: str, target_lang: str) -> str:
     )
     return resp.choices[0].message.content.strip()
 
+PREFERRED_FONT = "arial"
 def _find_system_vn_font() -> Optional[str]:
-    # 1) Kiểm tra bundle trong src/pdf2zh/fonts
     base = os.path.dirname(__file__)
-    bundled = os.path.join(base, "fonts", "NotoSans-Regular.ttf")
-    if os.path.exists(bundled):
-        return bundled
-
-    # 2) Fallback sang font hệ thống Windows/Unix
-    fonts_dir = os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts")
-    patterns = [
-        "*arialuni.ttf",
-        "*dejavu*Sans*.ttf",
-        "*times new roman.ttf",
-        "*calibri.ttf"
-    ]
-    for pat in patterns:
-        matches = glob.glob(os.path.join(fonts_dir, pat))
-        if matches:
-            return matches[0]
+    fonts_dir = os.path.join(base, "fonts")
+    try:
+        files = [f for f in os.listdir(fonts_dir) if f.lower().endswith(".ttf")]
+    except FileNotFoundError:
+        return None
+    for fname in files:
+        if os.path.splitext(fname)[0].lower() == PREFERRED_FONT.lower():
+            return os.path.join(fonts_dir, fname)
+    if files:
+        return os.path.join(fonts_dir, files[0])
     return None
+
 
 
 def extract_layout_pages(
@@ -235,61 +233,39 @@ def render_translations_on_page(
     translations: List[str],
     fontsize: float = 12,
     fontname: Optional[str] = None,
-    debug: bool = True
+    debug: bool = False
 ) -> None:
-    """
-    Vẽ mỗi bản dịch lên page đúng vị trí bbox, tự wrap khi vượt chiều rộng,
-    không dùng hình ảnh mà vẫn là text vector.
-    """
-    system_font = _find_system_vn_font()
-    fontfile = system_font
-    fontname_default = fontname or "Times-Roman"
-
-    if fontfile:
+    fontfile = _find_system_vn_font()
+    vn_fontname = None
+    if fontfile and os.path.exists(fontfile):
         try:
-            measure_font = fitz.Font(fontfile=fontfile)
-        except Exception:
-            measure_font = fitz.Font(fontname=fontname_default)
-    else:
-        measure_font = fitz.Font(fontname=fontname_default)
-
+            vn_fontname = "VNFont"
+            page.insert_font(fontfile=fontfile, fontname="VNFont")
+        except Exception as e:
+            print(f"[ERROR] insert_font failed: {e}")
+            vn_fontname = None
 
     for blk, txt in zip(blocks, translations):
-        s = txt.strip()
-        if not s:
+        if not txt:
             continue
-
-        # khi debug==True thì vẽ khung đỏ để check bbox, else bỏ
         if debug:
-            page.draw_rect(blk.bbox, color=(1,0,0), width=0.5)
-
-        # xác định kích thước chữ
+            page.draw_rect(blk.bbox, color=(1, 0, 0), width=0.5)
         block_fs = blk.font_size if blk.font_size and blk.font_size > 0 else fontsize
-
-        # manual wrap: chia s thành words, ghép từng dòng sao cho <= bbox.width
         rect = blk.bbox
+        print(rect)
+        print(block_fs)
         try:
-            if fontfile:
-                page.insert_textbox(
-                    rect,
-                    s,
-                    fontfile=fontfile,
-                    fontsize=block_fs,
-                    color=(0, 0, 0),
-                    align=0  # left align
-                )
-            else:
-                page.insert_textbox(
-                    rect,
-                    s,
-                    fontname=fontname_default,
-                    fontsize=block_fs,
-                    color=(0, 0, 0),
-                    align=0
-                )
+            page.insert_textbox(
+                rect,
+                txt,
+                fontname=vn_fontname,
+                fontsize=block_fs,
+                color=(0, 0, 0),
+                overlay=True,
+                align=0, 
+            )
         except Exception as e:
             print(f"[ERROR] insert_textbox failed: {e}")
-
 
 def convert_pdf(
     input_pdf: str,
