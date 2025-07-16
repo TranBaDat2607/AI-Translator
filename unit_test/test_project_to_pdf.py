@@ -17,7 +17,7 @@ def main():
     src = fitz.open(testing_file_dir)
     # chỉ lấy page đầu tiên
     doc = fitz.open()
-    doc.insert_pdf(src, from_page=0, to_page=0)
+    doc.insert_pdf(src, from_page=0, to_page=7)
     temp_pdf = "temp_first_page.pdf"
     doc.save(temp_pdf)
 

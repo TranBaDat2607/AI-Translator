@@ -282,6 +282,7 @@ def convert_pdf(
          - gọi render_translations_on_page()
     3) Lưu output_pdf
     """
+    from .layout import ReflowRenderer
     if not api_key:
         raise ValueError("API key is required")
     openai.api_key = api_key
@@ -291,6 +292,7 @@ def convert_pdf(
     pdf_p = pdfplumber.open(input_pdf)
     out = fitz.open()
     total = len(src)
+    renderer = ReflowRenderer()
 
     for i in range(total):
         print(f"[PAGE] {i+1}/{total}")
@@ -337,7 +339,7 @@ def convert_pdf(
             translations.append(tr)
 
         # D) render lên new page
-        render_translations_on_page(newp, text_blocks, translations, debug=True)
+        renderer.render_page(newp, text_blocks, translations)
 
     print(f"[SAVE] {output_pdf}")
     out.save(output_pdf)
