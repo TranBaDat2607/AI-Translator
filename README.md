@@ -7,12 +7,12 @@ Set up in anaconda:
 
 DONE: 
 - lấy được text
+- render được tiếng việt lên trên trang pdf 
 
 DOING:
 - làm sao để merge các đoạn để giữ lại context
 - fix nốt chiếu lên
-    - Đã tìm được lý do tại sao ko chiếu lên
-    - lấy thêm font name và kiểu chữ in đậm/ nghiêng để tìm xem nguyên nhân ko hiện lên được là gì
+    - fix nốt 1 số edge case không nằm trong đúng bbox
 - đã lấy được bounding box
 
 TO DO:
