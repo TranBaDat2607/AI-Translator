@@ -24,11 +24,23 @@ class ReflowRenderer:
         self.min_fontsize = min_fontsize
         self.max_iter = max_iter
         self.debug = debug
-        self.hyph = pyphen.Pyphen(lang=hyphen_lang) if pyphen else None
+        self.hyph = pyphen.Pyphen(lang=hyphen_lang) if (pyphen and hyphen_lang) else None
 
     def _split_paragraphs(self, text: str) -> List[str]:
-        # giữ nguyên mọi xuống dòng
-        return text.split("\n")
+        """
+        Tách text thành các đoạn (paragraph) dựa trên dòng trống (\n\n).
+        Bên trong mỗi paragraph, merge physical line-wrap (\n) thành space.
+        """
+        paras: List[str] = []
+        # 1) tách ra theo paragraph (giữa hai paragraph thường có \n\n)
+        raw_paras = text.split("\n\n")
+        for rp in raw_paras:
+            # 2) merge các line-wrap thành space
+            merged = rp.replace("\n", " ").strip()
+            if merged:
+                paras.append(merged)
+        return paras
+
 
     @lru_cache(maxsize=2048)
     def _measure(self, fontfile: Optional[str], fontname: Optional[str], text: str, fontsize: float) -> float:
@@ -144,7 +156,8 @@ class ReflowRenderer:
         self,
         page: fitz.Page,
         blocks: List[BlockInfo],
-        translations: List[str]
+        translations: List[str],
+        debug: bool
     ) -> None:
         """
         Render lại toàn bộ các khối đã dịch với logic tự wrap & auto‐font‐size.
@@ -160,6 +173,13 @@ class ReflowRenderer:
         font = fitz.Font(fontfile=fontfile, fontname=fontname) if fontfile else fitz.Font()
 
         for blk, txt in zip(blocks, translations):
+            if debug:
+                page.draw_rect(
+                    blk.bbox,
+                    color = (1, 0, 0),
+                    width = 0.5
+                )
+
             if not txt.strip():
                 continue
             rect = blk.bbox
@@ -173,23 +193,33 @@ class ReflowRenderer:
                 max_height=rect.height
             )
             try:
-                ascent = font.ascent
-                descent = font.descent
-                glyph_h = (ascent - descent) * fs / 1000
-            except AttributeError:
-                glyph_h = fs
+                base_h = font.height(fs)
+            except Exception:
+                try:
+                    ascent = font.ascent
+                    descent = font.descent
+                    base_h = (ascent - descent) * fs / 1000
+                except AttributeError:
+                    base_h = fs
 
-            line_h = glyph_h 
+            line_h = base_h * self.line_spacing
+
+            try:
+                # font.ascent cho biết khoảng cách từ baseline tới đỉnh glyph (theo đơn vị font)
+                asc = font.ascent * fs / 1000
+            except Exception:
+                # fallback khớp gần đúng nếu không có .ascent
+                asc = fs * 0.8
+
+            x0 = rect.x0
+            # baseline của dòng đầu = bbox.y0 + ascender
+            baseline0 = rect.y0 + asc
+
             x0, y0 = rect.x0, rect.y0
             for i, line in enumerate(lines):
-                y = y0 + i * line_h
-                if self.debug:
-                    page.draw_rect(
-                        fitz.Rect(x0, y, x0 + rect.width, y + line_h),
-                        color=(1, 0, 0), width=0.2
-                    )
+                yb = baseline0 + i * line_h
                 page.insert_text(
-                    (x0, y),
+                    (x0, yb),
                     line,
                     fontsize=fs,
                     fontname=fontname,

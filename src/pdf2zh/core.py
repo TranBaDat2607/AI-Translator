@@ -110,7 +110,7 @@ def translate_text(text: str, target_lang: str) -> str:
     )
     return resp.choices[0].message.content.strip()
 
-PREFERRED_FONT = "arial"
+PREFERRED_FONT = "NotoSans-Regular"
 def _find_system_vn_font() -> Optional[str]:
     base = os.path.dirname(__file__)
     fonts_dir = os.path.join(base, "fonts")
@@ -271,7 +271,8 @@ def convert_pdf(
     input_pdf: str,
     output_pdf: str,
     target_lang: str,
-    api_key: str
+    api_key: str,
+    debug: bool
 ) -> None:
     """
     1) Mở input_pdf
@@ -339,7 +340,7 @@ def convert_pdf(
             translations.append(tr)
 
         # D) render lên new page
-        renderer.render_page(newp, text_blocks, translations)
+        renderer.render_page(newp, text_blocks, translations, debug)
 
     print(f"[SAVE] {output_pdf}")
     out.save(output_pdf)

@@ -17,7 +17,7 @@ def main():
     src = fitz.open(testing_file_dir)
     # chỉ lấy page đầu tiên
     doc = fitz.open()
-    doc.insert_pdf(src, from_page=0, to_page=7)
+    doc.insert_pdf(src, from_page=0, to_page=8)
     temp_pdf = "temp_first_page.pdf"
     doc.save(temp_pdf)
 
@@ -26,7 +26,8 @@ def main():
         input_pdf=temp_pdf,
         output_pdf=output_pdf,
         target_lang="Vietnamese",
-        api_key=api_key
+        api_key=api_key,
+        debug=False
     )
     print(f"Saved translated PDF to {output_pdf}")
 
